@@ -1,175 +1,63 @@
 
-const fs = require("fs"); // Para que al hacer cambios en un terminal, queden guardados los cambios para la proxima vez q haga npm start
+//MODELO PARA USAR LA BASE DE DATOS.
+//EN LAS TRANSPARENCIAS ESTAN LOS MODELOS
 
-//Nombre del fichero donde se guardan las preguntas.
-//Es un fichero de texto con el JSON de quizzes.
-const DB_FILENAME = "quizzes.json"; // Necesario
+//Cargamos el modulo sequelize. Constructor
+const Sequelize = require('sequelize');
 
-// Modelo de datos.
-//
-// En esta variable se mantienen todos los quizzes existentes.
-// Es un array de objetos, donde cada uno tiene los atributos question
-// y answer para guardar el texto de la pregunta y el de la respuesta
-let quizzes = [
-    {
-        question: "Capital de Italia",
-        answer: "Roma"
+//Generamos la instancia de sequelize con new para acceder a la base de datos
+//que esta localizaza en el fichero quizzes.sqlite y el protocolo sqlite:
+//parentesis: url del fichero
+//{logging: false} es para que al empezar el juego en el terminal no salgan trazas indeseadas
+const sequelize = new Sequelize ("sqlite:quizzes.sqlite", {logging: false});
+
+//Generamos un modelo de datos.
+//No lo hemos asignado a ninguna variable porque siempre que definimos un modelo en sequelize
+//se crea un array que se llama models donde estan todos los modelos
+sequelize.define('quiz', {
+    question: {
+        type: Sequelize.STRING,
+        //cada pregunta es unica
+        unique: {msg: "Ya existe esta pregunta"},
+        //para que no se puedan crear preguntas vacias
+        validate: {notEmpty: {msg: "La pregunta no puede estar vacia"}}
     },
-    {
-        question: "Capital de Francia",
-        answer: "París"
-    },
-    {
-        question: "Capital de España",
-        answer: "Madrid"
-    },
-    {
-        question: "Capital de Portugal",
-        answer: "Lisboa"
-    }];
+    //comprobamos que la respuesta no esta vacia
+    answer: {
+        type: Sequelize.STRING,
+        validate: {notEmpty: {msg: "La respuesta no puede estar vacia"}}
+    }
+});
 
+//Sincronizamos. Es una promesa
+//Miramos si en la base de datos existen las tablas que necesito
+//En caso de que no exitan se van a crear
 
-/**
- * Carga las preguntas guardadas en el fichero.
- *
- * Este método carga el contenido del fichero DB_FILENAME en la variable
- * quizzes. El contenido de ese fichero está en formate JSON.
- * La primera vez que se ejecute este método, el fichero DB_FILENAME no
- * existe, y se producira el error ENOENT. En este caso se salva el
- * contenido inicial almacenado en quizzes.
- * Si se produce otro tipo de error, se lanza una excepcion que abortara
- * la ejecucion del programa.
- */
-
-// Necesario para lo explicado arriba
-const load = () => {
-    fs.readFile(DB_FILENAME, (err, data) => {
-        if (err) {
-            //La primera vez no existe el fichero
-            if (err.code === "ENOENT") {
-                save(); // Valores iniciales
-                return;
-            }
-            throw err;
+sequelize.sync()
+//Cuando se completa la promesa de sync pasamos al then
+//donde se va a ejecutar una funcion que genera otra promesa. Dentro de sequelize
+// accede a la propiedad model, accedo al modelo quiz y contamos cuantos hay
+    .then(() => sequelize.model.quiz.count())
+    // cuando el anterior then devueva el valor pasamos a este then que toma como
+    //parametro el valor de la cuenta
+    .then(count => {
+        // en caso de que la cuenta sea 0
+        if(!count){
+            //creamos varios quizzes. bulkCreate() los crea.
+            //El array es una promesa tambien por lo que ponemos el return para que la promesa
+            // del then espere hasta que se cumpla la promesa del array
+            return sequelize.models.quiz.bulkCreate([
+                {question: "Capital de Italia", ansquer: "Roma"},
+                {question: "Capital de Francia", ansquer: "Paris"},
+                {question: "Capital de España", ansquer: "Madrid"},
+                {question: "Capital de Portugal", ansquer: "Lisboa"},
+            ]);
         }
-
-        let json = JSON.parse(data);
-
-        if (json){
-            quizzes = json;
-        }
+    })
+    //por si hay algun error
+    .catch(error => {
+        console.log(error);
     });
-};
 
-/**
- * Guarda las preguntas en el fichero.
- *
- * Guarda en formato JSON el valor de quizzes en el fichero DB_FILENAME.
- * Si se produce algun tipo de error, se lanza una excepcion que abortara
- * la ejecucion del programa.
- */
-
-//Tb necesario
-const save = () => {
-    fs.writeFile(DB_FILENAME, //nombre del archivo
-        JSON.stringify(quizzes), // quizzes como array de strings
-        err => {
-            if (err) throw err;
-        });
-};
-
-
-
-//
-/**
- * Devuelve el numero total de preguntas existentes
- *
- * @returns {number} numero total preguntas existentes
- */
-exports.count = () => quizzes.length;
-
-
-
-//
-/**
- * Añade un nuevo quiz
- *
- * @param question String con la pregunta
- * @param answer   String con la respuesta
- */
-exports.add = (question, answer) => {
-
-    quizzes.push({
-        question: (question || "").trim(),
-        answer: (answer || "").trim()
-    });
-    save();
-}
-
-
-/**
- * Actualiza el quiz situado en la pos index
- *
- * @param id       Claave que identifica el quiz a actualizar
- * @param question String con la pregunta
- * @param answer   String con la respuesta
- */
-exports.update = (id, question, answer) => {
-
-    const quiz = quizzes[id];
-    if (typeof quiz === "undefined") {
-        throw new Error(`El valor del parametro id no es válido.`);
-    }
-    quizzes.splice(id, 1, {
-        question: (question || "").trim(),
-        answer: (answer || "").trim()
-    });
-    save();
-};
-
-
-/**
- * Devuelve todos los quizzes existentes.
- *
- * Devulve un clon del valor guardado en la variable quizzes. Es decir, devuelve
- * un objeto nuevo con todas las preguntas existentes.
- * Para clonar quizzes se usa stringfy + parse.
- *
- * @returns {any}
- */
-exports.getAll = () => JSON.parse(JSON.stringify(quizzes));
-
-
-
-/**
- * Devuelve un clon del quiz almacenado en la posicion dada
- *
- * @param id Clave que identifica el quiz a devolver.
- * @returns {question, answer} Devuelve el objeto quiz de la posicion dada answer   String con la respuesta
- */
-exports.getByIndex = id => {
-    const quiz = quizzes[id];
-    if (typeof quiz === "undefined") {
-        throw new Error(`El valor del parámetro id no es válido.`);
-    }
-    return JSON.parse(JSON.stringify(quiz));
-};
-
-
-/**
- * Elimina el quiz situado en la posicion dada
- *
- * @param id Clave que identifica el quiz a borrar
- */
-exports.deleteByIndex = id => {
-    const quiz = quizzes[id];
-    if (typeof quiz === "undefined") {
-        throw new Error(`El valor del parámetro id no es válido.`);
-    }
-    quizzes.splice(id, 1);
-    save();
-};
-
-// Necesario load al final y save al final de algunos metodos
-// Carga los quizzes almacenados en el fichero.
-load();
+//exportamos sequelize. Ahora sequelize es un objeto
+module.exports = sequelize;
